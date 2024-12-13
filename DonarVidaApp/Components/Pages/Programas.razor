@@ -1,0 +1,238 @@
+﻿@page "/programas"
+
+@using BibliotecaDonarVidaApp.Models
+@using BibliotecaDonarVidaApp.Services
+@using BibliotecaDonarVidaApp.Services.Interfaces
+@using DonarVidaApp.Components.Pages
+@using Microsoft.AspNetCore.Components
+
+@inject ProgramaDonacionService ProgramaDonacionService;
+@inject NavigationManager NavigationManager;
+@inject CentroDonacionService CentroDonacionService;
+
+<PageTitle>Programas</PageTitle>
+
+<h1>Campañas de donación</h1>
+
+<a class="btn btn-success btn-sm mb-3" @onclick="NuevoPrograma">Nueva Campaña de donación</a>
+@if (programas == null)
+{
+    <p>Cargando datos...</p>
+}
+else
+{
+    <div class="row">
+        @foreach (var programa in programas)
+        {
+            <div class="col-md-4">
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">@programa.Nombre</h5>
+                        <p class="card-text">
+                            <strong>Fecha de Inicio:</strong> @programa.FechaInicio<br />
+                            <strong>Fecha de Finalización:</strong> @programa.FechaFin<br />
+                            <strong>Centro de Donación:</strong> @centroDonacionNombre[programa.CentroDonacionId]<br />
+                            <strong>Tipo de Sangre Solicitada:</strong> @programa.TipoSangreSolicitada
+                        </p>
+                        <div class="d-flex justify-content-between">
+                            <!-- Botón de Editar -->
+                            <button class="btn btn-primary" @onclick="() => EditarPrograma(programa.Id)">
+                                Editar
+                            </button>
+                            <!-- Botón de Eliminar -->
+                            <button class="btn btn-danger" @onclick="() => MostrarModal(programa.Id)">
+                                Eliminar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+}
+
+@if (isModalVisible)
+{
+    <div class="modal show d-block" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@modalTitle</h5>
+                    <button type="button" class="btn-close" @onclick="CerrarModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="nombre" class="form-label">Nombre</label>
+                        <input type="text" id="TipoDonacion" class="form-control" @bind="programaActual.Nombre" />
+                    </div>
+                    <div class="mb-3">
+                        <label for="fechaInicio" class="form-label">Fecha de Inicio</label>
+                        <input type="date" id="fechaInicio" class="form-control" @bind="programaActual.FechaInicio" />
+                    </div>
+                    <div class="mb-3">
+                        <label for="fechaFin" class="form-label">Fecha de finalización</label>
+                        <input type="date" id="fechaFin" class="form-control" @bind="programaActual.FechaFin" />
+                    </div>
+                    <div class="mb-3">
+                        <label for="centroDonacion" class="form-label">Centro de donación</label>
+                        <select type="text" id="centroDonacion" class="form-select" @bind="programaActual.CentroDonacionId">
+                            @foreach (var centro in centros)
+                            {
+                                <option value="@centro.Id">@centro.Nombre</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="tipoSangre" class="form-label">Tipo de sangre solicitada</label>
+                        <input type="text" id="tipoSangre" class="form-control" @bind="programaActual.TipoSangreSolicitada" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CerrarModal">Cancelar</button>
+                    <button class="btn btn-primary" @onclick="GuardarPrograma">Guardar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop show"></div>
+}
+
+@if (isModalOpen)
+{
+    <div class="modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center;">
+        <div class="modal-content" style="background-color: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); width: 300px; text-align: center;">
+            <h2>Confirmar Eliminación</h2>
+            <p>¿Estás seguro de que deseas eliminar este dato?</p>
+            <div>
+                <button class="btn btn-secondary" style="margin-right: 10px;" @onclick="CancelarEliminacion">Cancelar</button>
+                <button class="btn btn-danger" @onclick="ConfirmarEliminacion">Aceptar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<BibliotecaDonarVidaApp.Models.ProgramaDonacion>? programas;
+    private List<BibliotecaDonarVidaApp.Models.CentroDonacion>? centros;
+    private Dictionary<int, string> centroDonacionNombre = new();
+    private BibliotecaDonarVidaApp.Models.ProgramaDonacion programaActual = new BibliotecaDonarVidaApp.Models.ProgramaDonacion();
+    private string modalTitle = string.Empty;
+    private bool isModalVisible = false;
+    private bool isModalOpen = false;
+    private int donacionIdParaEliminar;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarProgramas();
+        await CargarCentrosDonacion();
+        centros = await CentroDonacionService.GetAllAsync();
+    }
+
+    private async Task CargarCentrosDonacion()
+    {
+        try
+        {
+            var centros = await CentroDonacionService.GetAllAsync();
+            centroDonacionNombre = centros.ToDictionary(c => c.Id, c => c.Nombre); 
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error fetching centros: {ex.Message}");
+            centroDonacionNombre = new Dictionary<int, string>();
+        }
+    }
+
+    private async Task CargarProgramas()
+    {
+        try
+        {
+            // Llamada al servicio para obtener la lista de donantes.
+            var programasList = await ProgramaDonacionService.GetAllAsync();
+            if (programasList != null)
+            {
+                programas = programasList;  // Si el modelo ya coincide, no es necesario mapear.
+            }
+            else
+            {
+                programas = new List<BibliotecaDonarVidaApp.Models.ProgramaDonacion>();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error al cargar los programas: {ex.Message}");
+        }
+    }
+
+    private void NuevoPrograma()
+    {
+        programaActual = new BibliotecaDonarVidaApp.Models.ProgramaDonacion
+        {
+                FechaInicio = DateOnly.FromDateTime(DateTime.Now),
+                FechaFin = DateOnly.FromDateTime(DateTime.Now)
+        };
+        modalTitle = "Nueva Campaña de Donación";
+        isModalVisible = true;
+    }
+
+    private async Task EditarPrograma(int id)
+    {
+        programaActual = await ProgramaDonacionService.GetByIdAsync(id);
+        modalTitle = "Editar Campaña de Donación";
+        isModalVisible = true;
+    }
+
+    private async Task GuardarPrograma()
+    {
+        if (programaActual.Id == 0)
+        {
+            // Crear nuevo donante
+            await ProgramaDonacionService.CreateAsync(programaActual);
+        }
+        else
+        {
+            // Actualizar donante existente
+            await ProgramaDonacionService.UpdateAsync(programaActual);
+        }
+
+        await CargarProgramas();
+        CerrarModal();
+    }
+
+    private void CerrarModal()
+    {
+        isModalVisible = false;
+    }
+
+    // Método para abrir el modal de confirmación
+    private void MostrarModal(int id)
+    {
+        donacionIdParaEliminar = id;
+        isModalOpen = true;
+    }
+
+    // Método para cancelar la eliminación
+    private void CancelarEliminacion()
+    {
+        isModalOpen = false;
+    }
+
+    // Método para confirmar la eliminación
+    private async Task ConfirmarEliminacion()
+    {
+        var result = await ProgramaDonacionService.DeleteAsync(donacionIdParaEliminar);
+
+        if (result)
+        {
+            await CargarProgramas(); // Recargar la lista de donaciones
+                                    // Aquí podrías mostrar una notificación de éxito
+        }
+        else
+        {
+            // Aquí podrías mostrar una notificación de error
+        }
+
+        isModalOpen = false;
+    }
+
+}
